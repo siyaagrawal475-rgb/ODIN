@@ -1,0 +1,1712 @@
+/* ==========================================================================
+   O.D.I.N. — The Gungnir Core: Tactical Dome Animation & Design System
+   ==========================================================================
+   Architecture:
+     · Section 0: Shared dome toolkit (vars, easing, SVG references)
+     · Section 1: Layout & chrome
+     · Section 2: Sidebar & history
+     · Section 3: Chat viewport & message bubbles
+     · Section 4: Input bar & controls
+     · Section 5: THE 9 DOME STATES (keyframes & components)
+     · Section 6: Responsive & prefers-reduced-motion
+   ========================================================================== */
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION 0 — SHARED DOME TOOLKIT
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* --- Design Tokens --- */
+:root, [data-theme="light"] {
+    --bg-primary:        #F7F6F5;
+    --surface:           #FFFFFF;
+    --sidebar:           #EFEEEC;
+    --border:            #DDD9D6;
+    --text-primary:      #221F1E;
+    --text-secondary:    #69625F;
+    --accent:            #6B2E2E;
+    --accent-hover:      #551F1F;
+    --gold:              #B8933A;
+    --gold-hover:        #9A7A2C;
+    --bg-grid-color:     rgba(184, 147, 58, 0.22);
+    --vignette-outer:    rgba(34, 31, 30, 0.42);
+    --shadow-soft:       0 2px 8px rgba(0, 0, 0, 0.05);
+
+    /* Toolkit #3 — shared edge falloff at dome rim */
+    --rim-edge-scale:    scale(0.87);
+    --rim-edge-opacity:  0;
+
+    /* Toolkit #4 — non-linear radial motion easing (fast center, slow rim) */
+    --dome-ease-rim:     cubic-bezier(0.06, 0.9, 0.05, 1);
+
+    /* Shared glow intensities */
+    --raven-glow-idle:   0 0 14px var(--gold), 0 0 28px rgba(184, 147, 58, 0.35);
+    --raven-glow-think:  0 0 26px var(--gold), 0 0 52px rgba(184, 147, 58, 0.6), 0 0 80px rgba(184, 147, 58, 0.2);
+}
+
+[data-theme="dark"] {
+    --bg-primary:        #17140F;
+    --surface:           #201C17;
+    --sidebar:           #1C1814;
+    --border:            #332C25;
+    --text-primary:      #EDE9E5;
+    --text-secondary:    #A69C93;
+    --accent:            #8A3D3D;
+    --accent-hover:      #6E2D2D;
+    --gold:              #D4AF5A;
+    --gold-hover:        #C29B42;
+    --bg-grid-color:     rgba(212, 175, 90, 0.18);
+    --vignette-outer:    rgba(0, 0, 0, 0.75);
+    --shadow-soft:       0 2px 8px rgba(0, 0, 0, 0.3);
+    --raven-glow-idle:   0 0 16px var(--gold), 0 0 32px rgba(212, 175, 90, 0.35);
+    --raven-glow-think:  0 0 30px var(--gold), 0 0 60px rgba(212, 175, 90, 0.55), 0 0 90px rgba(212, 175, 90, 0.2);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION 1 — LAYOUT & CHROME
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+}
+
+.classification-banner {
+    height: 28px;
+    background-color: #6B2E2E;
+    color: #F7F6F5;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 100;
+    user-select: none;
+}
+
+.banner-gold-hairline {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-color: var(--gold);
+}
+
+.main-layout {
+    display: flex;
+    flex: 1;
+    height: calc(100vh - 28px);
+    position: relative;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION 2 — SIDEBAR & HISTORY
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.sidebar {
+    width: 260px;
+    min-width: 260px;
+    background-color: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 12px;
+    overflow-y: auto;
+    z-index: 30;
+    transition: transform 0.25s ease;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.brand-block {
+    display: flex;
+    flex-direction: column;
+}
+
+.brand-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 0.1em;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.brand-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: var(--gold);
+    margin-top: 2px;
+}
+
+.binary-crow-container {
+    color: var(--gold);
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+}
+
+.binary-crow-container.fly-in {
+    animation: crow-fly-in 0.5s cubic-bezier(0.08, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes crow-fly-in {
+    0%   { opacity: 0; transform: translateX(20px) rotate(10deg); }
+    100% { opacity: 0.6; transform: translateX(0) rotate(0deg); }
+}
+
+.btn-new-chat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+    width: 100%;
+    letter-spacing: 0.04em;
+}
+
+.btn-new-chat:hover {
+    border-color: var(--gold);
+    background-color: rgba(184, 147, 58, 0.06);
+}
+
+/* History */
+.history-container { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+.history-group { display: flex; flex-direction: column; gap: 4px; }
+
+.history-group-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    padding: 4px 4px 2px;
+}
+
+.history-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.history-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 5px;
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.history-item:hover    { background-color: var(--surface); }
+.history-item.active   { background-color: var(--surface); border-left-color: var(--gold); }
+
+.history-item-content {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+    margin-right: 6px;
+}
+
+.history-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-time {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.delete-history-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+    border-radius: 3px;
+    line-height: 1;
+}
+
+.history-item:hover .delete-history-btn { opacity: 1; }
+
+.delete-history-btn:hover {
+    color: #D32F2F;
+    background-color: rgba(211, 47, 47, 0.1);
+}
+
+.history-empty {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 20px 10px;
+    font-style: italic;
+    line-height: 1.5;
+}
+
+.sidebar-footer {
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.status-indicator { display: flex; align-items: center; gap: 6px; }
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #4CAF50;
+    box-shadow: 0 0 5px rgba(76, 175, 80, 0.6);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION 3 — CHAT VIEWPORT, DOME CANVAS LAYERS & MESSAGE BUBBLES
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.main-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Top bar */
+.top-bar {
+    height: 60px;
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: var(--bg-primary);
+    z-index: 20;
+}
+
+.top-bar-left  { display: flex; align-items: center; gap: 16px; }
+
+.mobile-toggle-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px;
+}
+
+.theme-toggle-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease;
+}
+
+.theme-toggle-btn:hover { background-color: var(--surface); }
+
+[data-theme="light"] .moon-icon { display: block; }
+[data-theme="light"] .sun-icon  { display: none; }
+[data-theme="dark"]  .moon-icon { display: none; }
+[data-theme="dark"]  .sun-icon  { display: block; }
+
+.top-wordmark-container { display: flex; flex-direction: column; }
+
+.wordmark-main {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 0.08em;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.wordmark-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.top-bar-right { display: flex; align-items: center; }
+
+.top-shield-logo {
+    height: 72px;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 3px 8px rgba(0,0,0,0.25));
+}
+
+/* ── Chat Viewport ── */
+.chat-viewport {
+    flex: 1;
+    position: relative;   /* stacking context for dome canvas */
+    overflow-y: auto;
+    padding: 24px;
+}
+
+/* ── Dome Canvas — absolute fill behind chat messages ── */
+.tactical-dome-canvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 1;
+}
+
+/* ── Toolkit #2: Fisheye Barrel Distorted Curved Grid ──
+   perspective + rotateX: primary dome recession (cheap, always works).
+   filter: barrel fisheye SVG filter: enhancement (applied on top).
+   No negative inset — overflow:hidden on parent clips it cleanly.
+*/
+.dome-curved-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(to right,  var(--bg-grid-color) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--bg-grid-color) 1px, transparent 1px),
+        radial-gradient(ellipse 60% 40% at 50% 50%, transparent 30%, var(--bg-grid-color) 31%, transparent 33%);
+    background-size: 36px 36px, 36px 36px, 100% 100%;
+    transform: perspective(900px) rotateX(16deg) scale(1.08);
+    transform-origin: 50% 0;
+    filter: url(#barrel-fisheye-filter);
+    opacity: 0.85;
+    z-index: 1;
+}
+
+/* ── Toolkit #1: Vignette Edge Recession ── */
+.dome-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        ellipse 75% 65% at 50% 45%,
+        transparent 28%,
+        var(--vignette-outer) 100%
+    );
+    z-index: 2;
+}
+
+/* ── Toolkit #5: Chat messages sit on flat glass pane above dome ── */
+.chat-messages {
+    position: relative;
+    z-index: 10;
+    max-width: 860px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-height: 100%;
+}
+
+/* Empty state */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: auto 0;
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.empty-wordmark {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 52px;
+    letter-spacing: 0.1em;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.empty-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--gold);
+    margin-top: 6px;
+}
+
+.empty-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    max-width: 480px;
+    margin-top: 12px;
+    margin-bottom: 28px;
+    line-height: 1.6;
+}
+
+.suggestion-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    width: 100%;
+    max-width: 640px;
+}
+
+.chip-btn {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease,
+                transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.chip-btn:hover {
+    border-color: var(--gold);
+    background-color: var(--bg-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(184, 147, 58, 0.15);
+}
+
+/* ── Message Bubbles ── */
+.message-row {
+    display: flex;
+    width: 100%;
+    position: relative;
+    animation: message-slide-up 0.3s cubic-bezier(0.08, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes message-slide-up {
+    0%   { opacity: 0; transform: translateY(14px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+.message-row.user      { justify-content: flex-end; }
+.message-row.assistant { justify-content: flex-start; }
+
+.message-bubble {
+    max-width: 82%;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    position: relative;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    z-index: 12;
+}
+
+.message-row.user .message-bubble {
+    background-color: var(--accent);
+    color: #FFFFFF;
+    border: 1px solid var(--accent-hover);
+    box-shadow: 0 4px 14px rgba(107,46,46,0.3);
+}
+
+.message-row.assistant .message-bubble {
+    background-color: var(--surface) !important;
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+}
+
+.message-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    position: relative;
+    z-index: 5;
+    font-weight: 450;
+    letter-spacing: 0.01em;
+}
+
+/* Confidence-gate badge */
+.gated-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gold);
+    background: rgba(184, 147, 58, 0.1);
+    border: 1px solid rgba(184, 147, 58, 0.3);
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    letter-spacing: 0.05em;
+}
+
+/* Citations */
+.citations-block {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.citation-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(184, 147, 58, 0.06);
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(184, 147, 58, 0.2);
+    width: fit-content;
+}
+
+.citation-marker { color: var(--gold); font-size: 10px; }
+
+/* Aegis shield message border (on message bubble for declined responses) */
+.shield-wall-hex {
+    border: 1.5px solid var(--gold) !important;
+    box-shadow: 0 0 22px rgba(212,175,90,0.3), inset 0 0 10px rgba(212,175,90,0.08) !important;
+    animation: aegis-bubble-appear 0.4s var(--dome-ease-rim) forwards;
+}
+
+.shield-wall-hex::before {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border: 1px dashed var(--gold);
+    border-radius: 11px;
+    opacity: 0;
+    pointer-events: none;
+    animation: aegis-outer-pulse 2s ease-in-out 0.4s infinite;
+}
+
+@keyframes aegis-bubble-appear {
+    0%   { opacity: 0; transform: scale(0.94); }
+    70%  { opacity: 1; transform: scale(1.02); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes aegis-outer-pulse {
+    0%   { opacity: 0.25; transform: scale(0.99); }
+    50%  { opacity: 0.7;  transform: scale(1.01); }
+    100% { opacity: 0.25; transform: scale(0.99); }
+}
+
+/* Read-aloud pill */
+.speech-btn {
+    background: rgba(184,147,58,0.1);
+    border: 1px solid var(--gold);
+    border-radius: 14px;
+    color: var(--gold);
+    padding: 5px 13px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    transition: all 0.2s cubic-bezier(0.08, 0.9, 0.2, 1);
+}
+
+.speech-btn:hover {
+    background: var(--gold);
+    color: #17140F;
+    box-shadow: 0 0 14px rgba(212,175,90,0.5);
+    transform: translateY(-1px);
+}
+
+/* Wisdom Well loading ripple (inside bubble while waiting) */
+.wisdom-well-container { position: relative; overflow: hidden; padding-bottom: 6px; }
+
+.wisdom-well-ripple {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 8px;
+    background: radial-gradient(ellipse at center, var(--gold) 0%, transparent 70%);
+    opacity: 0.45;
+    animation: ripple-out 1.4s var(--dome-ease-rim) infinite;
+}
+
+@keyframes ripple-out {
+    0%   { transform: scaleX(0.15); opacity: 0.65; }
+    100% { transform: scaleX(1.5);  opacity: 0; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION 4 — INPUT BAR & CONTROLS
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.chat-input-bar {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    background-color: var(--bg-primary);
+    z-index: 20;
+}
+
+.chat-form {
+    max-width: 860px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-form:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(107,46,46,0.12);
+}
+
+.input-wrapper { flex: 1; }
+
+.user-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: var(--text-primary);
+    outline: none;
+    padding: 8px 4px;
+}
+
+.user-input::placeholder { color: var(--text-secondary); }
+
+.icon-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.icon-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--sidebar);
+}
+
+.mic-btn.listening {
+    color: #D32F2F;
+    animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%   { transform: scale(1);    opacity: 1; }
+    50%  { transform: scale(1.15); opacity: 0.7; }
+    100% { transform: scale(1);    opacity: 1; }
+}
+
+.send-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--accent);
+    color: #F7F6F5;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.send-btn:hover  { background-color: var(--accent-hover); }
+.send-btn:active { transform: scale(0.94); }
+
+.input-footer-metrics {
+    max-width: 860px;
+    margin: 6px auto 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.metric-divider { color: var(--border); }
+
+/* All-Seeing Eye sentinel */
+.all-seeing-eye {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gold);
+    cursor: default;
+    transition: color 0.2s ease, opacity 0.3s ease;
+}
+
+.all-seeing-eye.idle-pulsing .eye-iris {
+    animation: eye-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes eye-pulse {
+    0%   { transform: scale(1);    opacity: 0.22; }
+    50%  { transform: scale(1.18); opacity: 0.62; }
+    100% { transform: scale(1);    opacity: 0.22; }
+}
+
+.all-seeing-eye.submit-narrow #eye-pupil {
+    animation: pupil-narrow 0.22s forwards;
+}
+
+@keyframes pupil-narrow {
+    0%   { r: 4.5; }
+    100% { r: 1.5; }
+}
+
+.all-seeing-eye.brooding-closed { opacity: 0.28; }
+
+.all-seeing-eye.brooding-closed #eye-pupil {
+    animation: pupil-close-line 0.5s forwards;
+}
+
+@keyframes pupil-close-line {
+    0%   { r: 4.5; }
+    100% { r: 0.4; transform: scaleX(5); }
+}
+
+/* Gungnir boot spearhead bar */
+.gungnir-boot-bar {
+    width: 4px;
+    height: 24px;
+    background-color: var(--gold);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 100%, 0% 100%, 0% 25%);
+    opacity: 0;
+}
+
+.gungnir-boot-bar.active {
+    animation: gungnir-reveal 0.9s ease-out forwards;
+}
+
+@keyframes gungnir-reveal {
+    0%   { opacity: 0; transform: scaleY(0); }
+    50%  { opacity: 1; transform: scaleY(1); }
+    100% { opacity: 0.35; transform: scaleY(1); }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION 5 — THE 9 GUNGNIR CORE DOME STATES
+   ══════════════════════════════════════════════════════════════════════════
+
+   z-index layers inside .tactical-dome-canvas:
+     dome-curved-grid          : 1
+     dome-vignette             : 2
+     yggdrasil-lattice         : 3  (handshake lattice, permanent faint)
+     dome-orbit-layer          : 4  (Huginn/Muninn + radar — always visible)
+     mimirs-well-overlay       : 5  (escalated deep-retrieval)
+     aegis-shield-canvas       : 6  (confidence-gate validation tile field)
+     odins-eye-canvas          : 7  (convergence streams + iris)
+     valknut-reticle           : 8  (HUD reticle — intentionally flat)
+
+   Everything in .main-panel outside the canvas:
+     bifrost-portal            : 40  (portal transition, full viewport)
+     sleipnir-overlay          : 15  (history nav streaks)
+     odin-wrath-overlay        : 999 (security flash, fixed)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #1: Huginn & Muninn Radar Scan
+   Ambient idle + thinking state combined.
+   • True elliptical orbit using 16-stop parametric translate keyframes.
+   • Toolkit #3 applied: scale + opacity falloff near rim stops.
+   • Radar sweep has a conic-gradient cone trail (::after pseudo-element).
+   • Thinking class intensifies speed, glow, and sweep opacity.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.dome-orbit-layer {
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    z-index: 4;
+    /* Elliptical clipping so raven glow can't escape dome rim */
+    overflow: visible;
+}
+
+/* Independent raven container — can be paused without stopping sweep */
+.raven-orbit-container {
+    position: absolute;
+    inset: 0;
+}
+
+.orbiting-raven {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background-color: var(--gold);
+    border-radius: 50%;
+    box-shadow: var(--raven-glow-idle);
+    filter: url(#glow-filter);
+    top: 0; left: calc(50% - 6px);
+}
+
+/*
+    True elliptical orbit:
+    parametric: x = cx + rx·cos(t), y = cy + ry·sin(t)
+    cx=50%, cy=50%; rx=47%; ry=35% (flatter = "dome rim" not circle)
+    16 equidistant stops. Toolkit #3: near rim (90°/270°) scale down 13%.
+*/
+.orbiting-raven.huginn {
+    animation: ellipse-huginn 11s linear infinite;
+}
+
+.orbiting-raven.muninn {
+    animation: ellipse-muninn 11s linear infinite;
+}
+
+@keyframes ellipse-huginn {
+    0%   { transform: translate( 47%,   0%)  scale(1.00); opacity: 0.80; }
+    6%   { transform: translate( 44%,  13%)  scale(0.99); opacity: 0.79; }
+    12%  { transform: translate( 36%,  25%)  scale(0.96); opacity: 0.76; }
+    18%  { transform: translate( 23%,  33%)  scale(0.91); opacity: 0.70; }
+    25%  { transform: translate(  0%,  35%)  scale(0.87); opacity: 0.55; } /* rim */
+    31%  { transform: translate(-23%,  33%)  scale(0.91); opacity: 0.70; }
+    37%  { transform: translate(-36%,  25%)  scale(0.96); opacity: 0.76; }
+    43%  { transform: translate(-44%,  13%)  scale(0.99); opacity: 0.79; }
+    50%  { transform: translate(-47%,   0%)  scale(1.00); opacity: 0.80; }
+    56%  { transform: translate(-44%, -13%)  scale(0.99); opacity: 0.79; }
+    62%  { transform: translate(-36%, -25%)  scale(0.96); opacity: 0.76; }
+    68%  { transform: translate(-23%, -33%)  scale(0.91); opacity: 0.70; }
+    75%  { transform: translate(  0%, -35%)  scale(0.87); opacity: 0.55; } /* rim */
+    81%  { transform: translate( 23%, -33%)  scale(0.91); opacity: 0.70; }
+    87%  { transform: translate( 36%, -25%)  scale(0.96); opacity: 0.76; }
+    93%  { transform: translate( 44%, -13%)  scale(0.99); opacity: 0.79; }
+    100% { transform: translate( 47%,   0%)  scale(1.00); opacity: 0.80; }
+}
+
+/* Muninn is phase-shifted by 180° (starts at opposite ellipse point) */
+@keyframes ellipse-muninn {
+    0%   { transform: translate(-47%,   0%)  scale(1.00); opacity: 0.80; }
+    6%   { transform: translate(-44%, -13%)  scale(0.99); opacity: 0.79; }
+    12%  { transform: translate(-36%, -25%)  scale(0.96); opacity: 0.76; }
+    18%  { transform: translate(-23%, -33%)  scale(0.91); opacity: 0.70; }
+    25%  { transform: translate(  0%, -35%)  scale(0.87); opacity: 0.55; } /* rim */
+    31%  { transform: translate( 23%, -33%)  scale(0.91); opacity: 0.70; }
+    37%  { transform: translate( 36%, -25%)  scale(0.96); opacity: 0.76; }
+    43%  { transform: translate( 44%, -13%)  scale(0.99); opacity: 0.79; }
+    50%  { transform: translate( 47%,   0%)  scale(1.00); opacity: 0.80; }
+    56%  { transform: translate( 44%,  13%)  scale(0.99); opacity: 0.79; }
+    62%  { transform: translate( 36%,  25%)  scale(0.96); opacity: 0.76; }
+    68%  { transform: translate( 23%,  33%)  scale(0.91); opacity: 0.70; }
+    75%  { transform: translate(  0%,  35%)  scale(0.87); opacity: 0.55; } /* rim */
+    81%  { transform: translate(-23%,  33%)  scale(0.91); opacity: 0.70; }
+    87%  { transform: translate(-36%,  25%)  scale(0.96); opacity: 0.76; }
+    93%  { transform: translate(-44%,  13%)  scale(0.99); opacity: 0.79; }
+    100% { transform: translate(-47%,   0%)  scale(1.00); opacity: 0.80; }
+}
+
+/* Thinking state: faster orbit, stronger glow, brighter sweep */
+.dome-orbit-layer.thinking .orbiting-raven {
+    animation-duration: 3.5s;
+    box-shadow: var(--raven-glow-think);
+    width: 15px;
+    height: 15px;
+}
+
+/* Radar sweep — 360° rotation from centre-left */
+.radar-sweep-line {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50%;
+    height: 3px;
+    transform-origin: 0% 50%;
+    opacity: 0.55;
+    animation: radar-sweep-360 9s linear infinite;
+    background: linear-gradient(to right, var(--gold) 0%, rgba(184,147,58,0.5) 55%, transparent 100%);
+    box-shadow: 0 0 10px rgba(184, 147, 58, 0.5);
+}
+
+/* Cone trail pseudo-element (wedge of glow sweeping behind the line) */
+.radar-sweep-line::after {
+    content: '';
+    position: absolute;
+    top: -28px;
+    left: 0;
+    width: 100%;
+    height: 58px;
+    background: conic-gradient(from -35deg at 0% 50%,
+        rgba(184,147,58,0.35) 0deg,
+        transparent 70deg);
+    pointer-events: none;
+}
+
+.dome-orbit-layer.thinking .radar-sweep-line {
+    animation-duration: 2.2s;
+    opacity: 1;
+    height: 4px;
+    box-shadow: 0 0 18px rgba(184,147,58,0.8), 0 0 36px rgba(184,147,58,0.3);
+}
+
+@keyframes radar-sweep-360 {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #2: Aegis Shield Deployment
+   Hex tile field ripples from center to rim on confidence-gate check.
+   Tiles generated dynamically by JS (12–18 divs). Each tile gets a
+   distance class (.near/.mid/.far) controlling rim falloff (toolkit #3).
+   ────────────────────────────────────────────────────────────────────────── */
+
+.aegis-shield-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    overflow: hidden;
+    /* Clip to dome ellipse shape */
+    border-radius: 50%;
+}
+
+.aegis-hex-tile {
+    position: absolute;
+    width: 38px;
+    height: 38px;
+    clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+    background: rgba(184,147,58,0.30);
+    border: none;
+    animation: aegis-hex-ripple 0.55s var(--dome-ease-rim) forwards;
+    box-shadow: 0 0 8px rgba(184, 147, 58, 0.4);
+    opacity: 0;
+}
+
+.aegis-hex-tile.far  { --tile-final-scale: 0.87; --tile-final-opacity: 0.18; }
+.aegis-hex-tile.mid  { --tile-final-scale: 0.94; --tile-final-opacity: 0.30; }
+.aegis-hex-tile.near { --tile-final-scale: 1.00; --tile-final-opacity: 0.45; }
+
+@keyframes aegis-hex-ripple {
+    0%   { opacity: 0;   transform: scale(0.2); }
+    40%  { opacity: 0.5; }
+    100% {
+        opacity: var(--tile-final-opacity, 0.18);
+        transform: scale(var(--tile-final-scale, 1));
+    }
+}
+
+/* Full expanding bubble on the canvas itself (additional ring overlay) */
+.aegis-shield-canvas.deploying::before {
+    content: '';
+    position: absolute;
+    inset: 10%;
+    border: 1px solid var(--gold);
+    border-radius: 50%;
+    animation: aegis-ring-expand 0.55s var(--dome-ease-rim) forwards;
+}
+
+@keyframes aegis-ring-expand {
+    0%   { opacity: 0.8; transform: scale(0.1); }
+    100% { opacity: 0;   transform: scale(1.1); }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #3: Odin's Eye Data Convergence
+   Parabolic streams rush from outer rim inward to a central iris.
+   Each JS-generated stream div gets a unique --stream-angle CSS var
+   and uses it to produce a curved inward path via combined translate + rotate.
+   Iris brightens on convergence, then hands off to text rendering.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.odins-eye-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Central iris — glows brighter as streams converge */
+.odins-eye-iris {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0%, var(--gold) 35%, rgba(184,147,58,0.4) 70%, transparent 100%);
+    box-shadow: 0 0 40px var(--gold), 0 0 80px rgba(184,147,58,0.5), 0 0 120px rgba(184,147,58,0.2);
+    animation: iris-converge 0.5s var(--dome-ease-rim) 0.3s forwards;
+}
+
+@keyframes iris-converge {
+    0%   { transform: translate(-50%, -50%) scale(0);   opacity: 0; }
+    60%  { transform: translate(-50%, -50%) scale(1.4); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1.0); opacity: 0; }
+}
+
+/* Data stream lines — JS sets transform-origin + rotate via inline style */
+.odins-eye-stream {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3px;
+    transform-origin: 0% 0%;
+    background: linear-gradient(to top,
+        #fff 0%,
+        var(--gold) 25%,
+        rgba(184,147,58,0.6) 60%,
+        transparent 100%);
+    box-shadow: 0 0 8px rgba(184,147,58,0.6);
+    animation: stream-converge-in 0.48s var(--dome-ease-rim) forwards;
+    animation-delay: var(--stream-delay, 0s);
+    opacity: 0;
+}
+
+@keyframes stream-converge-in {
+    0%   {
+        opacity: 0;
+        /* Start near rim — pushed outward from origin */
+        transform: rotate(var(--stream-angle, 0deg)) translateX(0) scaleY(1);
+    }
+    25%  { opacity: 0.9; }
+    100% {
+        opacity: 0;
+        /* Collapse inward — scaleY compresses stream toward iris */
+        transform: rotate(var(--stream-angle, 0deg)) translateX(0) scaleY(0.05);
+    }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #4: Bifrost Quantum Bridge
+   Session-start / reconnect only — biggest, rarest effect.
+   Rainbow conic spectrum + heavy radial blur bloom + scale-up from centre.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.bifrost-portal {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+    overflow: hidden;
+    animation: bifrost-expand 0.7s var(--dome-ease-rim) forwards;
+}
+
+/* Radial bloom behind the rainbow */
+.bifrost-portal::before {
+    content: '';
+    position: absolute;
+    inset: 10%;
+    border-radius: 50%;
+    background: radial-gradient(circle,
+        rgba(255,255,255,0.7) 0%,
+        rgba(212,175,90,0.75) 25%,
+        rgba(138,61,61,0.45) 55%,
+        transparent 80%);
+    filter: url(#bifrost-blur);
+    transform: scale(0);
+    animation: bifrost-bloom 0.7s var(--dome-ease-rim) forwards;
+}
+
+/* Rainbow conic spectrum streak */
+.bifrost-rainbow {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg at 50% 50%,
+        hsl(0,  80%, 55%),
+        hsl(40, 85%, 55%),
+        hsl(60, 90%, 55%),
+        hsl(120,75%, 45%),
+        hsl(200,80%, 55%),
+        hsl(260,75%, 60%),
+        hsl(300,70%, 55%),
+        hsl(0,  80%, 55%)
+    );
+    transform: scale(0);
+    opacity: 0;
+    animation: bifrost-rainbow-burst 0.7s var(--dome-ease-rim) forwards;
+}
+
+@keyframes bifrost-expand {
+    0%   { opacity: 0; }
+    15%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes bifrost-bloom {
+    0%   { transform: scale(0);   opacity: 0; }
+    40%  { transform: scale(1.8); opacity: 1; }
+    100% { transform: scale(3);   opacity: 0; }
+}
+
+@keyframes bifrost-rainbow-burst {
+    0%   { transform: scale(0);   opacity: 0; }
+    20%  { opacity: 0.85; }
+    50%  { transform: scale(1.5); opacity: 0.6; }
+    100% { transform: scale(2.5); opacity: 0; }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #5: Ravens' Report — Huginn & Muninn Debrief
+   The orbit container gets .breaking-formation: pauses ellipse animations,
+   applies mirrored-arc convergence toward the citation block.
+   After ~500ms, class is removed and orbit resumes.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.raven-orbit-container.breaking-formation .orbiting-raven {
+    animation-play-state: paused;
+}
+
+.raven-orbit-container.breaking-formation #raven-huginn {
+    animation: raven-converge-left 0.45s var(--dome-ease-rim) forwards;
+}
+
+.raven-orbit-container.breaking-formation #raven-muninn {
+    animation: raven-converge-right 0.45s var(--dome-ease-rim) forwards;
+}
+
+@keyframes raven-converge-left {
+    0%   { opacity: 0.8; }
+    60%  { transform: translate(40%, 20%) scale(1.2); opacity: 1; }
+    100% { transform: translate(36%, 22%) scale(0.6); opacity: 0; }
+}
+
+@keyframes raven-converge-right {
+    0%   { opacity: 0.8; }
+    60%  { transform: translate(-40%, 20%) scale(1.2); opacity: 1; }
+    100% { transform: translate(-36%, 22%) scale(0.6); opacity: 0; }
+}
+
+/* After debrief: small raven icon perches near citation block */
+.ravens-debrief-icon {
+    position: absolute;
+    top: -12px;
+    left: -22px;
+    color: var(--gold);
+    animation: raven-perch 0.5s ease-out forwards;
+}
+
+@keyframes raven-perch {
+    0%   { opacity: 0; transform: translate(-18px, -18px) scale(0.5); }
+    65%  { opacity: 1; transform: translate(8px, 4px) scale(1.15); }
+    100% { opacity: 0; transform: translate(22px, 0) scale(1); }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #6: Yggdrasil Root-Lock
+   Branches grow outward via stroke-dashoffset animation.
+   Endpoint circles appear with toolkit-#3 scale-fade (rim falloff).
+   After growing, lattice holds at low static opacity as permanent backdrop.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.yggdrasil-lattice {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    color: var(--gold);
+    opacity: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 0 4px var(--gold));
+}
+
+.yggdrasil-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.root-branch {
+    stroke: var(--gold);
+    stroke-width: 2.2;
+    fill: none;
+    stroke-linecap: round;
+    transition: none;
+}
+
+.ygg-endpoint {
+    fill: var(--gold);
+    opacity: 0;
+    /* Toolkit #3: rim endpoints scale-fade in */
+}
+
+.yggdrasil-lattice.active {
+    animation: ygg-canvas-fade-in 0.8s ease-out forwards;
+}
+
+.yggdrasil-lattice.active .root-branch {
+    animation: ygg-branch-grow 0.85s var(--dome-ease-rim) forwards;
+}
+
+.yggdrasil-lattice.active .root-branch.b1 { animation-delay: 0.00s; }
+.yggdrasil-lattice.active .root-branch.b2 { animation-delay: 0.07s; }
+.yggdrasil-lattice.active .root-branch.b3 { animation-delay: 0.14s; }
+.yggdrasil-lattice.active .root-branch.b4 { animation-delay: 0.21s; }
+.yggdrasil-lattice.active .root-branch.b5 { animation-delay: 0.28s; }
+
+@keyframes ygg-branch-grow {
+    0%   { stroke-dashoffset: 220; opacity: 0.8; }
+    100% { stroke-dashoffset: 0;   opacity: 1; }
+}
+
+/* The b5 branch has a shorter path length (185px) */
+.yggdrasil-lattice.active .root-branch.b5 {
+    animation: ygg-branch-grow-short 0.8s var(--dome-ease-rim) 0.28s forwards;
+}
+
+@keyframes ygg-branch-grow-short {
+    0%   { stroke-dashoffset: 185; opacity: 0.8; }
+    100% { stroke-dashoffset: 0;   opacity: 1; }
+}
+
+/* Rim endpoint dots: appear with scale-fade (toolkit #3) after branches */
+.yggdrasil-lattice.active .ygg-endpoint {
+    animation: ygg-endpoint-appear 0.35s var(--dome-ease-rim) 0.7s forwards;
+}
+
+@keyframes ygg-endpoint-appear {
+    0%   { opacity: 0; transform: scale(0.3); }
+    70%  { opacity: 0.9; transform: scale(1.15); }
+    100% { opacity: 0.65; transform: scale(var(--rim-edge-scale, 0.88)); }
+}
+
+/* Canvas opacity fade from 0 → faint lattice (holds permanently) */
+@keyframes ygg-canvas-fade-in {
+    0%   { opacity: 0; }
+    100% { opacity: 0.55; }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #7: Valknut Lock-On HUD Reticle
+   Three triangles start offset-rotated and snap into 120°-apart interlocked
+   Valknut formation in ~300ms with overshoot.
+   Intentionally FLAT (no barrel curvature) — floating HUD above dome.
+   .valknut-decline: strokes turn red, hold 200ms.
+   .valknut-proceed: dissolves, fires Odin's Eye handoff.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.valknut-reticle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 8;
+    color: var(--gold);
+    pointer-events: none;
+}
+
+.valknut-svg {
+    overflow: visible;
+    filter: drop-shadow(0 0 10px var(--gold)) drop-shadow(0 0 20px rgba(184,147,58,0.5));
+    width: 120px;
+    height: 120px;
+}
+
+/* t1 starts at -18° offset from 0° locked position */
+.v-tri.t1 {
+    transform-origin: 60px 52px;
+    transform: rotate(-18deg);
+    opacity: 0;
+    animation: valknut-t1-snap 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* t2 starts at +12° offset from 120° locked position */
+.v-tri.t2 {
+    transform-origin: 60px 52px;
+    transform: rotate(132deg);
+    opacity: 0;
+    animation: valknut-t2-snap 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 0.04s forwards;
+}
+
+/* t3 starts at +10° offset from 240° locked position */
+.v-tri.t3 {
+    transform-origin: 60px 52px;
+    transform: rotate(250deg);
+    opacity: 0;
+    animation: valknut-t3-snap 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 0.08s forwards;
+}
+
+@keyframes valknut-t1-snap {
+    0%   { transform: rotate(-18deg);  opacity: 0; }
+    40%  { opacity: 1; }
+    85%  { transform: rotate(4deg);   opacity: 1; }  /* overshoot */
+    100% { transform: rotate(0deg);   opacity: 1; }  /* locked */
+}
+
+@keyframes valknut-t2-snap {
+    0%   { transform: rotate(132deg);  opacity: 0; }
+    40%  { opacity: 1; }
+    85%  { transform: rotate(116deg);  opacity: 1; }  /* overshoot */
+    100% { transform: rotate(120deg);  opacity: 1; }  /* locked */
+}
+
+@keyframes valknut-t3-snap {
+    0%   { transform: rotate(250deg);  opacity: 0; }
+    40%  { opacity: 1; }
+    85%  { transform: rotate(236deg);  opacity: 1; }  /* overshoot */
+    100% { transform: rotate(240deg);  opacity: 1; }  /* locked */
+}
+
+/* Decline: strokes turn red, hold, then dissolve */
+.valknut-reticle.valknut-decline .v-tri {
+    stroke: #D32F2F;
+    filter: drop-shadow(0 0 6px rgba(211,47,47,0.7));
+    animation: valknut-decline-hold 0.22s ease-out forwards;
+}
+
+@keyframes valknut-decline-hold {
+    0%   { opacity: 1; }
+    100% { opacity: 1; }
+}
+
+.valknut-reticle.valknut-dissolve .v-tri {
+    animation: valknut-dissolve-out 0.25s ease-in forwards;
+}
+
+@keyframes valknut-dissolve-out {
+    0%   { opacity: 1; }
+    100% { opacity: 0; transform: scale(0.7); }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #8: Sleipnir Streak (History nav arcs)
+   8 horizontal arcs sweep left-to-right, 15ms stagger each.
+   Shallow arc via border-radius + small rotate matching dome grid curvature.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.sleipnir-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.sleipnir-streak {
+    position: absolute;
+    height: 2.5px;
+    width: 65%;
+    border-radius: 50% / 8px;
+    background: linear-gradient(to right, transparent 0%, #fff 35%, var(--gold) 48%, transparent 100%);
+    box-shadow: 0 0 10px rgba(184,147,58,0.7), 0 0 20px rgba(184,147,58,0.3);
+    opacity: 0.9;
+    animation: sleipnir-arc-sweep 0.26s ease-out forwards;
+}
+
+/* 8 streaks, vertically distributed, each slightly different rotate for depth */
+.sleipnir-streak.s1 { top:  9%; transform: rotate(-1.2deg); animation-delay: 0.000s; }
+.sleipnir-streak.s2 { top: 21%; transform: rotate(-0.8deg); animation-delay: 0.015s; }
+.sleipnir-streak.s3 { top: 34%; transform: rotate(-0.4deg); animation-delay: 0.030s; }
+.sleipnir-streak.s4 { top: 47%; transform: rotate( 0.0deg); animation-delay: 0.045s; }
+.sleipnir-streak.s5 { top: 59%; transform: rotate( 0.4deg); animation-delay: 0.060s; }
+.sleipnir-streak.s6 { top: 71%; transform: rotate( 0.8deg); animation-delay: 0.075s; }
+.sleipnir-streak.s7 { top: 82%; transform: rotate( 1.2deg); animation-delay: 0.090s; }
+.sleipnir-streak.s8 { top: 91%; transform: rotate( 1.5deg); animation-delay: 0.105s; }
+
+@keyframes sleipnir-arc-sweep {
+    0%   { left: -58%; opacity: 0.8; }
+    100% { left: 120%;  opacity: 0; }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   STATE #9: Mimir's Well — Deep Retrieval Pulse (escalation state)
+   Central iris sinks (translateY 6px). 4 concentric rings expand non-linearly
+   via --dome-ease-rim (fast near center, slowing at rim). Toolkit #3 applied
+   at full scale: final ring opacity → near-zero at rim.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.mimirs-well-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    width: 320px;
+    height: 320px;
+    pointer-events: none;
+}
+
+/* Sunken iris indicator */
+.mimir-iris {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 14px var(--gold);
+    opacity: 0;
+    transition: transform 0.4s ease, opacity 0.3s ease;
+}
+
+.mimirs-well-overlay.active .mimir-iris {
+    opacity: 0.75;
+    transform: translate(-50%, calc(-50% + 6px)); /* iris sinks */
+}
+
+.mimirs-well-overlay.resolved .mimir-iris {
+    opacity: 0;
+    transform: translate(-50%, -50%); /* restore */
+}
+
+/* 4 rings — non-linear radial expansion */
+.mimir-ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--gold);
+    border-radius: 50%;
+    box-shadow: 0 0 12px rgba(184,147,58,0.5), inset 0 0 8px rgba(184,147,58,0.2);
+    opacity: 0;
+    animation: mimir-ring-expand 2s var(--dome-ease-rim) infinite;
+}
+
+.mimir-ring.r1 { animation-delay: 0.0s; }
+.mimir-ring.r2 { animation-delay: 0.45s; }
+.mimir-ring.r3 { animation-delay: 0.90s; }
+.mimir-ring.r4 { animation-delay: 1.35s; }
+
+@keyframes mimir-ring-expand {
+    0%   { transform: scale(0.06); opacity: 1; }
+    20%  { transform: scale(0.35); opacity: 0.85; }
+    40%  { transform: scale(0.60); opacity: 0.70; }
+    70%  { transform: scale(0.85); opacity: 0.45; }
+    100% { transform: scale(1.2);  opacity: 0; }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   BONUS STATES (unchanged from earlier spec)
+   Odin's Wrath (security/rate-limit) and Brooding Allfather (connection drop)
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Odin's Wrath — full-screen security flash */
+.odin-wrath-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(138,61,61,0.28);
+    z-index: 999;
+    pointer-events: none;
+    animation: wrath-flash 0.38s ease-out forwards;
+}
+
+@keyframes wrath-flash {
+    0%   { opacity: 0; }
+    28%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.main-panel.wrath-jitter {
+    animation: wrath-jitter-anim 0.38s ease-out;
+}
+
+@keyframes wrath-jitter-anim {
+    0%   { transform: translate(0,0); }
+    20%  { transform: translate(-7px, 2px) skewX(1.2deg); }
+    45%  { transform: translate(7px, -2px) skewX(-1.2deg); }
+    70%  { transform: translate(-3px, 1px); }
+    100% { transform: translate(0,0); }
+}
+
+/* Brooding Allfather — handled via .all-seeing-eye.brooding-closed class above */
+
+/* Gungnir header bar */
+.gungnir-boot-bar {
+    width: 4px;
+    height: 24px;
+    background-color: var(--gold);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 100%, 0% 100%, 0% 25%);
+    opacity: 0;
+}
+
+.gungnir-boot-bar.active {
+    animation: gungnir-reveal 0.9s ease-out forwards;
+}
+
+@keyframes gungnir-reveal {
+    0%   { opacity: 0; transform: scaleY(0); }
+    50%  { opacity: 1; transform: scaleY(1); }
+    100% { opacity: 0.35; transform: scaleY(1); }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SECTION 6 — RESPONSIVE & PREFERS-REDUCED-MOTION
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+    .mobile-toggle-btn { display: block; }
+    .sidebar {
+        position: fixed;
+        top: 28px; bottom: 0; left: 0;
+        transform: translateX(-100%);
+        box-shadow: 4px 0 16px rgba(0,0,0,0.2);
+    }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background-color: rgba(0,0,0,0.4);
+        z-index: 40;
+    }
+    .sidebar-backdrop.active { display: block; }
+    .suggestion-grid { grid-template-columns: 1fr; }
+    .message-bubble { max-width: 90%; }
+}
+
+/*
+    prefers-reduced-motion: freeze every animated state to its specified
+    static end-pose. No exceptions. Each state's frozen pose:
+
+    #1  Huginn/Muninn: opposite ellipse poles, sweep at 12 o'clock.
+    #2  Aegis: tiles fully expanded, low static opacity.
+    #3  Odin's Eye: iris brightens once, streams skipped, text starts.
+    #4  Bifrost: cut straight to new view, no streak/blur.
+    #5  Ravens' Report: citations appear, no raven motion.
+    #6  Yggdrasil: full lattice instantly, static.
+    #7  Valknut: triangles at locked positions, hold.
+    #8  Sleipnir: instant cut, no streaks shown.
+    #9  Mimir's Well: iris sunken and holding, no rings.
+*/
+@media (prefers-reduced-motion: reduce) {
+
+    /* Kill all running animations */
+    .orbiting-raven.huginn,
+    .orbiting-raven.muninn,
+    .radar-sweep-line,
+    .bifrost-portal,
+    .bifrost-rainbow,
+    .bifrost-portal::before,
+    .sleipnir-streak,
+    .mimir-ring,
+    .all-seeing-eye.idle-pulsing .eye-iris,
+    .wisdom-well-ripple,
+    .root-branch,
+    .ygg-endpoint,
+    .odins-eye-iris,
+    .odins-eye-stream,
+    .ravens-debrief-icon,
+    .raven-orbit-container.breaking-formation #raven-huginn,
+    .raven-orbit-container.breaking-formation #raven-muninn,
+    .aegis-hex-tile,
+    .v-tri.t1, .v-tri.t2, .v-tri.t3 {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    /* #1: Static frozen poses */
+    .orbiting-raven.huginn { transform: translate(47%, 0%); opacity: 0.65; }
+    .orbiting-raven.muninn { transform: translate(-47%, 0%); opacity: 0.65; }
+    .radar-sweep-line { transform: rotate(0deg); opacity: 0.28; }
+
+    /* #2: Tiles at full expanded, low opacity */
+    .aegis-hex-tile { opacity: 0.14 !important; transform: scale(1) !important; }
+    .aegis-shield-canvas.deploying::before { opacity: 0.1; transform: scale(1); }
+
+    /* #3: Iris holds brightened, streams invisible */
+    .odins-eye-iris { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+    .odins-eye-stream { opacity: 0 !important; }
+
+    /* #4: Bifrost invisible */
+    .bifrost-portal { opacity: 0 !important; }
+
+    /* #5: Ravens hold at orbit positions, debrief icon invisible */
+    .ravens-debrief-icon { opacity: 0 !important; }
+
+    /* #6: Full lattice instantly visible */
+    .yggdrasil-lattice.active { opacity: 0.32; }
+    .root-branch { stroke-dashoffset: 0 !important; opacity: 1; }
+    .ygg-endpoint { opacity: 0.6; transform: scale(1); }
+
+    /* #7: Triangles at locked positions */
+    .v-tri.t1 { transform: rotate(0deg);   opacity: 1; }
+    .v-tri.t2 { transform: rotate(120deg); opacity: 1; }
+    .v-tri.t3 { transform: rotate(240deg); opacity: 1; }
+
+    /* #8: Sleipnir streaks invisible */
+    .sleipnir-streak { opacity: 0 !important; }
+
+    /* #9: Iris sunken, no rings */
+    .mimir-ring { opacity: 0 !important; }
+    .mimirs-well-overlay.active .mimir-iris {
+        opacity: 0.6;
+        transform: translate(-50%, calc(-50% + 6px));
+    }
+}
+
+/* Utility */
+.hidden { display: none !important; }

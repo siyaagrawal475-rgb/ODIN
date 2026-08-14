@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O.D.I.N. — Operational Defense &amp; Intelligence Network</title>
+    <meta name="description" content="AI-powered defense records assistant for logistics, strategic reports, and military intelligence.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <!--
+        GUNGNIR CORE: Shared SVG Definitions
+        ─────────────────────────────────────
+        Toolkit #2: barrel-fisheye-filter  — radial feImage displacement map for
+        true barrel/pincushion curvature on the background grid. The feImage uses
+        an inline SVG radial gradient (white-center → black-edge) as the
+        displacement source, which produces genuine optical barrel distortion rather
+        than noise-based jank.
+    -->
+    <svg class="dome-svg-defs" aria-hidden="true"
+         style="position:absolute;width:0;height:0;overflow:hidden;">
+        <defs>
+            <!-- Radial gradient used as displacement texture for barrel curvature -->
+            <radialGradient id="barrel-disp-grad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%"   stop-color="white"/>
+                <stop offset="100%" stop-color="black"/>
+            </radialGradient>
+
+            <!-- Barrel fisheye filter: radial displacement map (not noise) -->
+            <filter id="barrel-fisheye-filter" x="-15%" y="-15%" width="130%" height="130%"
+                    color-interpolation-filters="sRGB">
+                <!-- Render the displacement texture into an offscreen buffer -->
+                <feFlood flood-color="white" result="white-fill"/>
+                <feComposite in="white-fill" in2="SourceGraphic" operator="in" result="clip"/>
+                <!-- Build a radial gradient displacement image via feFuncR/G manipulation -->
+                <feImage href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3CradialGradient id='rg' cx='50%25' cy='50%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='white'/%3E%3Cstop offset='100%25' stop-color='black'/%3E%3C/radialGradient%3E%3Crect width='400' height='400' fill='url(%23rg)'/%3E%3C/svg%3E"
+                         result="radial-map" x="0" y="0" width="100%" height="100%"
+                         preserveAspectRatio="xMidYMid slice"/>
+                <feDisplacementMap in="SourceGraphic" in2="radial-map"
+                                   scale="18"
+                                   xChannelSelector="R" yChannelSelector="R"
+                                   result="distorted"/>
+            </filter>
+
+            <!-- Soft glow filter for ravens and iris centre -->
+            <filter id="glow-filter" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3" result="blur"/>
+                <feMerge>
+                    <feMergeNode in="blur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+
+            <!-- Strong blur for Bifrost portal bloom -->
+            <filter id="bifrost-blur" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="12"/>
+            </filter>
+        </defs>
+    </svg>
+
+    <!-- Tactical Odin Wrath Full-Screen Flash Overlay (Security / Rate-Limit) -->
+    <div id="odin-wrath-overlay" class="odin-wrath-overlay hidden" aria-hidden="true"></div>
+
+    <!-- Main Container -->
+    <div class="app-container">
+
+        <!-- Classification Banner -->
+        <header class="classification-banner">
+            <span>DEFENSE RECORDS ASSISTANT · DEMO INSTANCE</span>
+            <div class="banner-gold-hairline"></div>
+        </header>
+
+        <div class="main-layout">
+
+            <!-- Mobile Sidebar Overlay Backdrop -->
+            <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+            <!-- Left Sidebar (~260px) -->
+            <aside id="sidebar" class="sidebar">
+                <div class="sidebar-header">
+                    <div class="brand-block">
+                        <div class="brand-title">O.D.I.N.</div>
+                        <div class="brand-sub">DEFENSE NETWORK</div>
+                    </div>
+                    <!-- Binary Crow Perched Container -->
+                    <div id="binary-crow" class="binary-crow-container" title="System Ready">
+                        <svg class="crow-svg" viewBox="0 0 24 24" width="22" height="22">
+                            <polygon points="12,2 20,10 16,14 12,10 8,14 4,10" fill="currentColor"/>
+                            <polygon points="12,10 18,22 12,18 6,22" fill="currentColor" opacity="0.8"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <button id="new-chat-btn" class="btn-new-chat" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>New chat +</span>
+                </button>
+
+                <div class="history-container" id="history-container">
+                    <div class="history-group" id="group-today">
+                        <div class="history-group-title">TODAY</div>
+                        <ul id="history-today-list" class="history-list"></ul>
+                    </div>
+
+                    <div class="history-group" id="group-earlier">
+                        <div class="history-group-title">EARLIER</div>
+                        <ul id="history-earlier-list" class="history-list"></ul>
+                    </div>
+
+                    <div id="history-empty" class="history-empty">
+                        <span>No chat history yet. Ask a question to begin!</span>
+                    </div>
+                </div>
+
+                <!-- Footer info & status -->
+                <div class="sidebar-footer">
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span id="system-status-text">SYSTEM ONLINE · CHROMA PERSISTENT</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="main-panel">
+
+                <!--
+                    State #4: Bifrost Quantum Bridge Portal Overlay
+                    Only fires on session-start / reconnect (NOT on each message).
+                    Contains rainbow conic streak layer + bloom blur layer.
+                -->
+                <div id="bifrost-portal" class="bifrost-portal hidden" aria-hidden="true">
+                    <!-- Rainbow spectrum conic streak (::before handles bloom) -->
+                    <div class="bifrost-rainbow" id="bifrost-rainbow"></div>
+                </div>
+
+                <!--
+                    State #8: Sleipnir Arc Streaks — 8 streaks, 15ms stagger each.
+                    Each streak has a shallow arc via border-radius + rotate to match
+                    the dome grid's perspective(800px) rotateX(14deg) curvature.
+                -->
+                <div id="sleipnir-overlay" class="sleipnir-overlay hidden" aria-hidden="true">
+                    <div class="sleipnir-streak s1"></div>
+                    <div class="sleipnir-streak s2"></div>
+                    <div class="sleipnir-streak s3"></div>
+                    <div class="sleipnir-streak s4"></div>
+                    <div class="sleipnir-streak s5"></div>
+                    <div class="sleipnir-streak s6"></div>
+                    <div class="sleipnir-streak s7"></div>
+                    <div class="sleipnir-streak s8"></div>
+                </div>
+
+                <!-- Top Bar -->
+                <header class="top-bar">
+                    <div class="top-bar-left">
+                        <button id="hamburger-btn" class="mobile-toggle-btn" aria-label="Toggle Navigation Sidebar">
+                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+                                <line x1="3" y1="12" x2="21" y2="12"></line>
+                                <line x1="3" y1="6" x2="21" y2="6"></line>
+                                <line x1="3" y1="18" x2="21" y2="18"></line>
+                            </svg>
+                        </button>
+
+                        <!-- Theme Toggle Button -->
+                        <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle Light/Dark Theme">
+                            <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="5"></circle>
+                                <line x1="12" y1="1" x2="12" y2="3"></line>
+                                <line x1="12" y1="21" x2="12" y2="23"></line>
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                                <line x1="1" y1="12" x2="3" y2="12"></line>
+                                <line x1="21" y1="12" x2="23" y2="12"></line>
+                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                            </svg>
+                            <svg class="moon-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                            </svg>
+                        </button>
+
+                        <!-- Gungnir Boot Bar -->
+                        <div id="gungnir-boot-bar" class="gungnir-boot-bar" title="Gungnir Security Protocol Active"></div>
+
+                        <!-- Brand Wordmark & Sub-line -->
+                        <div class="top-wordmark-container">
+                            <div class="wordmark-main">O.D.I.N.</div>
+                            <div class="wordmark-sub">OPERATIONAL DEFENSE &amp; INTELLIGENCE NETWORK</div>
+                        </div>
+                    </div>
+
+                    <div class="top-bar-right">
+                        <!-- Shield Logo Image Asset -->
+                        <img src="/assets/logo.png" alt="O.D.I.N. Shield Logo" class="top-shield-logo" id="top-shield-logo">
+                    </div>
+                </header>
+
+                <!-- Chat Display Panel -->
+                <section class="chat-viewport">
+
+                    <!--
+                        ══════════════════════════════════════════════════════════════════
+                        THE GUNGNIR CORE DOME AMBIENT CANVAS
+                        Toolkit layers (1–5) + all 9 state overlays.
+                        z-index order:  grid(1) → vignette(2) → yggdrasil(3) →
+                                        orbit(4) → mimir(5) → aegis(6) →
+                                        odins-eye(7) → valknut(8)
+                        Chat messages sit at z-index 10 — always above the dome.
+                        ══════════════════════════════════════════════════════════════════
+                    -->
+                    <div class="tactical-dome-canvas" aria-hidden="true">
+
+                        <!-- Toolkit #2: Fisheye Barrel Distorted Curved Grid (permanent) -->
+                        <div class="dome-curved-grid"></div>
+
+                        <!-- Toolkit #1: Vignette Edge Recession (permanent, on top of grid) -->
+                        <div class="dome-vignette"></div>
+
+                        <!--
+                            State #6: Yggdrasil Root-Lock — organic branching gold lattice.
+                            Branches use stroke-dashoffset animation to grow from center.
+                            Endpoint circles apply toolkit-#3 scale-fade at rim.
+                        -->
+                        <div id="yggdrasil-lattice" class="yggdrasil-lattice hidden">
+                            <svg viewBox="0 0 400 400" width="100%" height="100%"
+                                 class="yggdrasil-svg" preserveAspectRatio="xMidYMid slice">
+                                <!-- Branch paths: stroke-dashoffset animated in CSS -->
+                                <path id="ygg-b1" class="root-branch b1"
+                                      d="M200,200 Q235,155 275,108 Q305,72 340,38"
+                                      stroke-dasharray="220" stroke-dashoffset="220"/>
+                                <path id="ygg-b2" class="root-branch b2"
+                                      d="M200,200 Q165,148 122,95 Q85,52 42,28"
+                                      stroke-dasharray="220" stroke-dashoffset="220"/>
+                                <path id="ygg-b3" class="root-branch b3"
+                                      d="M200,200 Q248,232 295,272 Q335,305 372,348"
+                                      stroke-dasharray="220" stroke-dashoffset="220"/>
+                                <path id="ygg-b4" class="root-branch b4"
+                                      d="M200,200 Q148,238 98,278 Q55,318 22,366"
+                                      stroke-dasharray="220" stroke-dashoffset="220"/>
+                                <path id="ygg-b5" class="root-branch b5"
+                                      d="M200,200 Q202,148 205,88 Q207,52 210,18"
+                                      stroke-dasharray="185" stroke-dashoffset="185"/>
+                                <!-- Rim endpoint dots — scale-fade per toolkit #3 -->
+                                <circle class="ygg-endpoint ep1" cx="340" cy="38"  r="3.5"/>
+                                <circle class="ygg-endpoint ep2" cx="42"  cy="28"  r="3.5"/>
+                                <circle class="ygg-endpoint ep3" cx="372" cy="348" r="3.5"/>
+                                <circle class="ygg-endpoint ep4" cx="22"  cy="366" r="3.5"/>
+                                <circle class="ygg-endpoint ep5" cx="210" cy="18"  r="3.5"/>
+                            </svg>
+                        </div>
+
+                        <!--
+                            State #1: Huginn & Muninn — true elliptical orbit + radar sweep.
+                            Orbit container wraps both ravens independently from the sweep line
+                            so Ravens' Report (#5) can freeze the raven animations while the
+                            sweep continues.
+                        -->
+                        <div class="dome-orbit-layer" id="dome-orbit-layer">
+                            <!-- Raven orbit container (independently pausable) -->
+                            <div id="raven-orbit-container" class="raven-orbit-container">
+                                <div id="raven-huginn"  class="orbiting-raven huginn"  title="Huginn"></div>
+                                <div id="raven-muninn"  class="orbiting-raven muninn"  title="Muninn"></div>
+                            </div>
+                            <!-- Radar sweep line (always running, intensifies on thinking) -->
+                            <div id="radar-sweep-line" class="radar-sweep-line"></div>
+                        </div>
+
+                        <!--
+                            State #9: Mimir's Well — escalated deep-retrieval rings.
+                            Iris sinks; 4 non-linear (fast-center / slow-rim) rings expand.
+                        -->
+                        <div id="mimirs-well-overlay" class="mimirs-well-overlay hidden">
+                            <div class="mimir-iris" id="mimir-iris"></div>
+                            <div class="mimir-ring r1"></div>
+                            <div class="mimir-ring r2"></div>
+                            <div class="mimir-ring r3"></div>
+                            <div class="mimir-ring r4"></div>
+                        </div>
+
+                        <!--
+                            State #2: Aegis Shield Deployment — hex tile ripple field.
+                            Tiles are generated dynamically by JS on trigger; the canvas
+                            element persists so the clip-shape is always ready.
+                        -->
+                        <div id="aegis-shield-canvas" class="aegis-shield-canvas hidden"
+                             aria-hidden="true"></div>
+
+                        <!--
+                            State #3: Odin's Eye Data Convergence — parabolic stream canvas.
+                            The central iris div is the convergence focal point.
+                            JS generates stream divs, each with unique rotate+translate arc.
+                        -->
+                        <div id="odins-eye-canvas" class="odins-eye-canvas hidden">
+                            <div class="odins-eye-iris" id="odins-eye-iris"></div>
+                        </div>
+
+                        <!--
+                            State #7: Valknut Lock-On HUD reticle.
+                            Three triangles start at offset rotations and snap into
+                            the interlocked 120°-apart Valknut formation in ~300ms.
+                            Deliberately flat (no barrel curvature) — HUD floating above dome.
+                        -->
+                        <div id="valknut-reticle" class="valknut-reticle hidden">
+                            <svg viewBox="0 0 120 120" width="96" height="96"
+                                 class="valknut-svg" aria-hidden="true">
+                                <!--
+                                    t1 starts at rotate(-18deg), snaps to 0°
+                                    t2 starts at rotate(108deg), snaps to 120°
+                                    t3 starts at rotate(228deg), snaps to 240°
+                                    Each triangle: equilateral, slightly different size
+                                    for the traditional interlocked-triangle appearance.
+                                -->
+                                <polygon class="v-tri t1"
+                                         points="60,14 100,84 20,84"
+                                         fill="none" stroke="currentColor" stroke-width="2.2"
+                                         stroke-linejoin="round"/>
+                                <polygon class="v-tri t2"
+                                         points="60,22 94,80 26,80"
+                                         fill="none" stroke="currentColor" stroke-width="2.2"
+                                         stroke-linejoin="round"/>
+                                <polygon class="v-tri t3"
+                                         points="60,30 88,76 32,76"
+                                         fill="none" stroke="currentColor" stroke-width="2.2"
+                                         stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+
+                    </div><!-- /.tactical-dome-canvas -->
+
+                    <!-- Chat Messages Container (Flat UI Layer — z-index 10, above dome) -->
+                    <div id="chat-messages" class="chat-messages">
+
+                        <!-- Default Empty State -->
+                        <div id="empty-state" class="empty-state">
+                            <div class="empty-wordmark">O.D.I.N.</div>
+                            <div class="empty-sub">OPERATIONAL DEFENSE &amp; INTELLIGENCE NETWORK</div>
+                            <p class="empty-desc">Access declassified defense reports, DRDO tech writeups, logistics specifications, and strategic records.</p>
+
+                            <div class="suggestion-grid">
+                                <button class="chip-btn" data-query="Summarize recent DRDO technology writeups and export products.">
+                                    <span>Summarize DRDO technology &amp; export products</span>
+                                </button>
+                                <button class="chip-btn" data-query="What are the technical specifications for Parachute Systems for Directional Sonobuoy?">
+                                    <span>Technical spec for Directional Sonobuoy</span>
+                                </button>
+                                <button class="chip-btn" data-query="Explain the Fire Suppressing Gel specifications and NBC suit details.">
+                                    <span>Fire Suppressing Gel &amp; NBC Suit specs</span>
+                                </button>
+                                <button class="chip-btn" data-query="What is the procedure for CEPTAM recruitment and helpline inquiries?">
+                                    <span>CEPTAM recruitment procedure</span>
+                                </button>
+                            </div>
+                        </div>
+
+                    </div><!-- /#chat-messages -->
+                </section><!-- /.chat-viewport -->
+
+                <!-- Bottom Input Bar -->
+                <footer class="chat-input-bar">
+                    <form id="chat-form" class="chat-form">
+
+                        <!-- All-Seeing Eye Sentinel Icon -->
+                        <div id="all-seeing-eye" class="all-seeing-eye" title="All-Seeing Eye Sentinel">
+                            <svg viewBox="0 0 36 36" width="28" height="28">
+                                <circle cx="18" cy="18" r="16" class="eye-outer-ring"
+                                        stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                <circle cx="18" cy="18" r="10" class="eye-iris"
+                                        fill="currentColor" opacity="0.3"/>
+                                <circle id="eye-pupil" cx="18" cy="18" r="4.5"
+                                        class="eye-pupil" fill="currentColor"/>
+                            </svg>
+                        </div>
+
+                        <div class="input-wrapper">
+                            <input
+                                type="text"
+                                id="user-input"
+                                class="user-input"
+                                placeholder="Ask about defense records..."
+                                autocomplete="off"
+                                required
+                            />
+                        </div>
+
+                        <!-- Voice Mic Button -->
+                        <button type="button" id="mic-btn" class="icon-btn mic-btn"
+                                title="Voice Input (Speech to Text)">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                                 stroke="currentColor" stroke-width="2">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                        </button>
+
+                        <!-- Send Button -->
+                        <button type="submit" id="send-btn" class="send-btn" title="Send Message">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                                 stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+
+                    </form>
+
+                    <!-- Metrics / Latency Display Footer -->
+                    <div class="input-footer-metrics">
+                        <span id="latency-metric">Latency: -- ms</span>
+                        <span class="metric-divider">|</span>
+                        <span id="confidence-metric">Grounding: --</span>
+                    </div>
+                </footer>
+
+            </main>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
