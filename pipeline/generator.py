@@ -27,6 +27,8 @@ class ResponseGenerator:
         self.gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        self.groq_key_1 = os.getenv("GROQ_API_KEY_1")
+        self.groq_key_2 = os.getenv("GROQ_API_KEY_2")
 
     def _format_context(self, chunks: List[Dict[str, Any]]) -> str:
         formatted = []
@@ -112,7 +114,30 @@ class ResponseGenerator:
             except Exception as e:
                 print(f"OpenAI API error: {e}")
 
-        # 3. Grounded Fallback Extractor (guarantees local execution with 0 API keys)
+        # 3. Try Groq API (key 1, then key 2 as backup)
+        for groq_key in filter(None, [self.groq_key_1, self.groq_key_2]):
+            try:
+                import requests
+                headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt_text}
+                    ],
+                    "temperature": 0.1
+                }
+                res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=12)
+                if res.status_code == 200:
+                    answer = res.json()["choices"][0]["message"]["content"]
+                    return self._verify_citations(answer, chunks)
+                elif res.status_code in (401, 429):
+                    print(f"Groq API key issue (status {res.status_code}), trying next key...")
+                    continue
+            except Exception as e:
+                print(f"Groq API error: {e}")
+
+        # 4. Grounded Fallback Extractor (guarantees local execution with 0 API keys)
         return self._local_grounded_extract(query, chunks)
 
     def _local_grounded_extract(self, query: str, chunks: List[Dict[str, Any]]) -> str:
